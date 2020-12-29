@@ -60,106 +60,32 @@ UD_HT_colors=c("#00BFC4", "#F8766D")
 
 ############# BEHAVIORAL ANALYSES #############
 
-######## SURVIVAL ANALYSIS
+########### SURVIVAL ANALYSIS
 # survival curve analysis, again excluding trials where participants waited for <= 1 second & >= 20 seconds
 AllKCur_rev <- subset(AllKCur, C_WaitTime >= 1 & C_WaitTime <= 20)
 
-# KAPLAN MEIER FORM: no covariates/regressors/random effects; just with environment as a predictor
-M1 <- survfit(Surv(C_WaitTime, Observed) ~ C_Environment, data = AllKCur_rev)
-ggsurvplot(M1, data = AllKCur_rev, conf.int = TRUE, censor = FALSE, size = 1, palette = c("#00BFC4", "#F8766D"), 
-           legend = "right", legend.labs = c("UD", "HT"), xlab="Wait Time (s)",
-           ggtheme = theme_bw() + theme(legend.title = element_blank(), 
-                                        legend.key.size = unit(1.5, 'lines'),
-                                        legend.text=element_text(size=18, margin = margin(t = 0, r = 25, b = 0, l = 0)),
-                                        axis.title.x = element_text(family = "Helvetica", size=22, margin = margin(t = 20, r = 0, b = 0, l = 0)),
-                                        axis.title.y = element_text(family = "Helvetica", size=22, margin = margin(t = 0, r = 25, b = 0, l = 0)),
-                                        axis.text = element_text(size=22)))
-survdiff(Surv(AllKCur_rev$C_WaitTime, AllKCur_rev$Observed)~ AllKCur_rev$C_Environment, rho=0) #logrank test
-summary(M1)
-M1_se <- mean(summary(M1)$std.er)
-
-
-## COX FORM: 
-# UPDATE: the script for the model now reported in the paper (post revisions) is in extra_analysis_4reviews_eal
-# ideal model: using coxme for random effects-- effect of environment & curiosity, random effects for ID & question number
-All_SurvCur <- coxme(Surv(C_WaitTime, Observed) ~ C_Environment + CurZ + (1|ID) + (1|C_QuestionNum), data = AllKCur_rev)
-All_SurvCur #(actual information to report)
-
-## with environment & curiosity as predictors; USING THIS AS GRAPH FOR COXME MODEL
-M2 <- coxph(Surv(C_WaitTime, Observed) ~ C_Environment + CurZ, data = AllKCur_rev)
-
-M2_df <- with(AllKCur_rev,
-              data.frame(C_Environment = c(0, 1), 
-                         CurZ = rep(mean(CurZ, na.rm = TRUE), 2)
-              )
-)
-M2_fit <- survfit(M2, newdata = M2_df)
-ggsurvplot(M2_fit, data = M2_df, conf.int = TRUE, palette = c("#1f78b4", "#33a02c"), censor = FALSE, 
-           legend = c(0.25, 0.15), legend.labs = c("Uniform Distribution", "Heavy-Tailed Distribution"), xlab="Wait Time (s)",
-           ggtheme = theme_bw() + theme(legend.title = element_blank(), 
-                                        legend.key.size = unit(1.5, 'lines'),
-                                        legend.text=element_text(family = "Helvetica", size=18, margin = margin(t = 0, r = 25, b = 0, l = 0)),
-                                        axis.title.x = element_text(family = "Helvetica", size=48, margin = margin(t = 20, r = 0, b = 0, l = 0)),
-                                        axis.title.y = element_text(family = "Helvetica", size=48, margin = margin(t = 0, r = 25, b = 0, l = 0)),
-                                        axis.text = element_text(size=30), panel.grid.major = element_blank(), 
-                                        panel.grid.minor = element_blank()))
-
-
-########## AUC CURVES FOR SURVIVAL ANALYSIS
-# Extracting AUC for each participant from the km_overall curves (Kaplan Meier curves)
-print(km_ud_rev_overall, print.rmean=TRUE, rmean=20)$rmean
-print(km_ht_rev_overall, print.rmean=TRUE, rmean=20)
-
-print(M1, print.rmean=TRUE, rmean="common")
-
-# Graphing AUC data
-# load data 
-setwd("/Users/emilylang/Dropbox/Research/ShohamyLab/KCur- Emily/Data")
-AUC <- read.csv("KCur_JointAUC.csv", header=TRUE, sep=",", stringsAsFactors=FALSE)
-
-# Do a paired t test
-t.test(AUC ~ Environment, AUC, paired=TRUE)
-se <- sd(AUC$Difference, na.rm=TRUE)/sqrt(64)
-
-WS_Stat<- data.frame(Mean=c(16.14, 13.60), SE=c(se), Environment=c("UD", "HT"))
-WS_Stat$Environment <- ifelse(WS_Stat$Environment == "UD", "Uniform Distribution", "Heavy-Tailed Distribution")
-AUC$Environment <- ifelse(AUC$Environment == "UD", "Uniform Distribution", "Heavy-Tailed Distribution")
-
-ggplot(data=WS_Stat, aes(x=Environment, y=Mean)) + 
-  geom_point(data=AUC, aes(x=Environment, y=AUC, color=Environment, group=ID), size = 2) +
-  geom_point(size=3) + geom_line(data=AUC, aes(x=Environment, y=AUC, group=ID), color= "dark grey") +
-  geom_errorbar(aes(ymin=Mean-SE, ymax=Mean+SE), width=.2, lwd=1.5) + 
-  geom_line(aes(group=1), lwd=1) +
-  scale_color_manual(values=c("#F8766D", "#00BFC4"), labels=c("Heavy-Tailed Distribution", "Uniform Distribution"), 
-                     guide = guide_legend(reverse = TRUE)) + 
-  labs(x="Environment", y="AUC (s)") + theme(legend.position= "none")
-
+# COX SURVIVAL MODEL
+All_SurvCur_new2 <- coxme(Surv(C_WaitTime, Observed) ~ C_Environment * CurZ + (C_Environment |ID) + (CurZ | ID) +
+                            (C_Environment |C_QuestionNum), data = AllKCur_rev)
 
 ########## CURIOSITY ANALYSIS
-
 ## WILLINGNESS TO WAIT
 ## How does curiosity impact people's willingness to wait in either environment? (remove trials where wait
 # is less than 1, but keep all other wait times >= 20)
 invlog <- function(x) { 1/(1+exp(-(x))) }
 
 KCur4 <- subset(AllKCur, AllKCur$C_WaitTime >= 1)
-
 KCur4$C_Response <- recode(KCur4$C_Response, "S" = 0, "W" = 1)
-
-#Exclude p's who waited for everything (temp, don't actually do this)
-#KCur4 <- subset(KCur4, ID != 137 & ID != 129 & ID !=127 & ID != 125 & ID != 124 & ID !=112 & ID !=109 & ID !=102  & ID !=30  & ID !=20  & ID !=11)
 
 M2 <- glmer(C_Response ~ CurZ * C_Environment + (CurZ * C_Environment | ID) + (C_Environment|C_QuestionNum),
             data=KCur4, family=binomial, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=100000)))
 summary(M2)
 
 pred2 <- expand.grid(C_Environment = c(0, 1), CurZ=seq(min(KCur4$CurZ), max(KCur4$CurZ), by=.1))
-
 fit2 <- as.data.frame(predict(M2, newdata=pred2, re.form=NA))
 fit2 <- cbind(pred2, fit2)
 colnames(fit2)[3] <- "fit2"
 fit2$Prob <- invlog(fit2$fit2)
-
 Condse2 <- summary(M2)$coefficients[2,2]
 fit2$se <- Condse2
 fit2$lower <- fit2$fit2 - fit2$se*2
@@ -174,81 +100,29 @@ ggplot(fit2, aes(x=CurZ, y=Prob, color=C_Environment, group=C_Environment)) +
   scale_color_manual(values=UD_HT_colors, labels=c("Uniform Distribution", "Heavy-Tailed Distribution")) +
   scale_fill_manual(values = UD_HT_colors, labels = c("Uniform Distribution", "Heavy-Tailed Distribution"))
 
+############### MEMORY ANALYSES
+M2_New <- glmer(MC_Correct ~ CurZ * C_Environment + C_WaitTime + UD_NWaitZ + HT_NWaitZ + 
+                  (CurZ + C_Environment + C_WaitTime |ID) + (C_Environment |C_QuestionNum),
+                data=NewMem_df, family=binomial,
+                control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=100000)))
 
+summary(M2_New)
 
-####### MEMORY ANALYSIS
-## Does curiosity predict memory? (excluding trials where wait was less than 1, but leaving all other
-## wait times in); reported model!
-invlog <- function(x) { 1/(1+exp(-(x))) }
+##graphing the model 
+M2_df <- as.data.frame(effect('CurZ*C_Environment', mod=M2_New, xlevels=list
+                              (C_Environment= c(0, 1),
+                                CurZ=seq(min(KCur5$CurZ), max(KCur5$CurZ), by=.1))))
 
-M1 <- glmer(MC_Correct ~ CurZ * C_Environment + (CurZ + C_Environment |ID) + (C_Environment|C_QuestionNum),
-            data=KCur4, family=binomial,
-            control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=100000)))
+Mem.Cur.fig.new <- ggplot(M2_df, aes(x=CurZ, y=fit, color=as.factor(C_Environment), group=as.factor(C_Environment))) + 
+  geom_ribbon(aes(ymin=lower, ymax=upper, fill = as.factor(C_Environment)), alpha=.3, color=NA) +
+  geom_line(lwd=3) + scale_color_manual(values=UD_HT_colors, labels=c("Uniform distribution", "Heavy-tailed distribution")) +
+  scale_y_continuous(lim=c(0,1), breaks = c(0, 0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)) + labs(x="Question curiosity (z-scored)", y="P(remember)") +
+  scale_fill_manual(values = UD_HT_colors, labels = c("Uniform distribution", "Heavy-tailed distribution"))
 
-summary(M1)
-
-pred <- expand.grid(C_Environment = c(0, 1), CurZ=seq(min(KCur4$CurZ), max(KCur4$CurZ), by=.1))
-
-fit <- as.data.frame(predict(M1, newdata=pred, re.form=NA))
-fit <- cbind(pred, fit)
-colnames(fit)[3] <- "fit"
-fit$Prob <- invlog(fit$fit)
-
-Condse <- summary(M1)$coefficients[2,2]
-fit$se <- Condse
-fit$lower <- fit$fit - fit$se*2
-fit$upper <- fit$fit + fit$se*2
-fit$lowerprob <- invlog(fit$lower)
-fit$upperprob <- invlog(fit$upper) 
-
-ggplot(fit, aes(x=CurZ, y=Prob, color=as.factor(C_Environment), group=as.factor(C_Environment))) + 
-  geom_ribbon(aes(ymin=lowerprob, ymax=upperprob, fill = as.factor(C_Environment)), alpha=.3, color=NA) +
-  geom_line(lwd=1.5) + scale_color_manual(values=UD_HT_colors, labels=c("Uniform Distribution", "Heavy-Tailed Distribution")) +
-  scale_y_continuous(lim=c(0.4,1)) + labs(x="Question Curiosity (Z)", y="P(Remember)") +
-  scale_fill_manual(values = UD_HT_colors, labels = c("Uniform Distribution", "Heavy-Tailed Distribution")) 
-
-## Do curiosity and wait time interact to predict memory?
-##(excluding trials where wait was less than 1, but leaving all other wait times in)
-## Use wait time rather than environment as a predictor
-
-M3 <- glmer(MC_Correct ~ CurZ * C_WaitTime + (CurZ * C_WaitTime |ID),
-            data=KCur4,
-            family=binomial,
-            control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=100000)))
-
-summary(M3)
-
-#model with median split to plot continuous interaction
-KCur4$WaitTime <- 0
-median <- median(KCur4$C_WaitTime)
-KCur4$WaitTime[which(KCur4$C_WaitTime > median)] <- 1
-
-M4 <- glmer(MC_Correct ~ CurZ * WaitTime + (CurZ * WaitTime |ID),
-            data=KCur4,
-            family=binomial,
-            control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=100000)))
-
-summary(M4)
-
-pred4 <- expand.grid(WaitTime = c(0, 1), CurZ=seq(min(KCur4$CurZ), max(KCur4$CurZ), by=.1))
-
-fit4 <- as.data.frame(predict(M4, newdata=pred4, re.form=NA))
-fit4 <- cbind(pred4, fit4)
-colnames(fit4)[3] <- "fit4"
-fit4$Prob <- invlog(fit4$fit4)
-
-Condse4 <- summary(M4)$coefficients[2,2]
-fit4$se <- Condse4
-fit4$lower <- fit4$fit4 - fit4$se*2
-fit4$upper <- fit4$fit4 + fit4$se*2
-fit4$lowerprob <- invlog(fit4$lower)
-fit4$upperprob <- invlog(fit4$upper)
-
-ggplot(fit4, aes(x=CurZ, y=Prob, color=as.factor(WaitTime), group=as.factor(WaitTime))) + 
-  geom_ribbon(aes(ymin=lowerprob, ymax=upperprob, fill = as.factor(WaitTime)), alpha=.3, color=NA) +
-  geom_line(lwd=1.5) + scale_color_manual(values=UD_HT_colors, labels=c("Long Wait", "Short Wait")) +
-  scale_y_continuous(lim=c(0.4,1)) + labs(x="Question Curiosity (Z)", y="P(Remember)") +
-  scale_fill_manual(values = UD_HT_colors, labels = c("Long Wait", "Short Wait")) 
+Mem.Cur.fig.new + theme(legend.background = element_rect(fill="white",
+                                                         size=0.5, linetype="solid", 
+                                                         colour ="black"),
+                        legend.position= c(0.35, 0.25))
 
 ##Look at how information prediction error affects memory (measure of semantic surprise)
 AllQ_sat <- read.csv("TrivQs_Share.csv", header=TRUE, sep=",", stringsAsFactors=FALSE)
